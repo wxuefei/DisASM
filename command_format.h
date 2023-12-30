@@ -17,34 +17,32 @@
 //@        xxxref.com                                                                             @\\ 
 //@                                                                                               @\\ 
 
-#include <stdio.h>
-
-//TODO change char -> TYPE_BYTE
+typedef unsigned char uint8;
 
 typedef struct {
 	char scale;
 	char index;
 	char base;
-	unsigned char sib;
+	uint8 sib;
 } SIB;
 
 typedef struct {
 	char mod;
 	char reg;
 	char rm;
-	unsigned char modrm;// HEX view of modrm
+	uint8 modrm;// HEX view of modrm
 } MODRM;
 
 typedef struct {
-		unsigned bit0:1;//TODO: implement as bit field?
-		unsigned bit1:1;
-		unsigned bit2:1;
-		unsigned bit3:1;
-		unsigned bit4:1;
-		unsigned bit5:1;
-		unsigned bit6:1;
-		unsigned bit7:1;
-	}SByte;
+	uint8 bit0:1;//TODO: implement as bit field?
+	uint8 bit1:1;
+	uint8 bit2:1;
+	uint8 bit3:1;
+	uint8 bit4:1;
+	uint8 bit5:1;
+	uint8 bit6:1;
+	uint8 bit7:1;
+}SByte;
 
 typedef union{
 	char byte;
@@ -52,19 +50,19 @@ typedef union{
 } UByte;
 
 typedef struct {
-	unsigned char bytenum;
-	unsigned char*hex_bytes;//array of command bytes
+	uint8 bytenum;
+	uint8*hex_bytes;//array of command bytes
 	char*bytes;//binary view
 } OPCODE;
 
 typedef struct {
-	unsigned char prefixcount;//number of prefixes
-	unsigned char*p;//pointer to prefix array
+	uint8 prefixcount;//number of prefixes
+	uint8*p;//pointer to prefix array
 	
-	unsigned char lnr;//lock and repeat prefixes-f0, f2, f3
-	unsigned char segr;//segment redefinition prefixes-2e, 36,3e,26,64,65
-	unsigned char opr;//operand size redefenition prefix-66
-	unsigned char sr;//address size redefenition prefix-67
+	uint8 lnr;//lock and repeat prefixes-f0, f2, f3
+	uint8 segr;//segment redefinition prefixes-2e, 36,3e,26,64,65
+	uint8 opr;//operand size redefenition prefix-66
+	uint8 sr;//address size redefenition prefix-67
 } PREFIX;
 
 typedef struct {
@@ -90,3 +88,14 @@ typedef struct {
 	int par_count;
 } SCommand;
 
+#define MAX_COMMAND_LEN 15
+
+#define RET_SUCCESS 0
+#define RET_ERROR 1
+#define RET_FILE_END 2
+
+#define LINE_LEN 62
+#define OPCODE_FIELD_OFFSET 0
+#define EXT_FIELD_OFFSET 33
+#define MODRM_FIELD_OFFSET 25
+#define DESCRIPTION_FIELD_OFFSET 40

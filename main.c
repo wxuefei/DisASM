@@ -23,20 +23,10 @@
 #include <curses.h>
 #include <string.h>
 //#include <windows.h>
-
 #include "command_format.h"
 
-#define MAX_COMMAND_LEN 15
-
-#define RET_SUCCESS 0
-#define RET_ERROR 1
-#define RET_FILE_END 2
-
-#define LINE_LEN 62
-#define OPCODE_FIELD_OFFSET 0
-#define EXT_FIELD_OFFSET 33
-#define MODRM_FIELD_OFFSET 25
-#define DESCRIPTION_FIELD_OFFSET 40
+char *opcodes = NULL;
+int opcode_len = 0;
 
 //====================================================================================================
 char* SByte2Char(UByte* bp) {
@@ -58,13 +48,17 @@ char* SByte2Char(UByte* bp) {
 int FindCommand(FILE* f, char* p, char* modrm) {
 	int text_counter = 0, opcode_counter = 0;
 	char buf, buf2;
+	int offset = 0;
 	while (1) {
-		fseek(f, text_counter, SEEK_SET);
-		if (feof(f)) {
+		// fseek(f, text_counter, SEEK_SET);
+		offset = text_counter;
+		// if (feof(f)) {
+		if(offset >= opcode_len){
 			return -1;
 		}
 		while (1) {
-			fread(&buf, 1, 1, f);
+			// fread(&buf, 1, 1, f);
+			buf = opcodes[offset++];
 			//printf("\tbuf:%c text_counter:%d\n",buf,text_counter);
 			//getch();
 			if (p[opcode_counter] == 0) {
@@ -77,8 +71,10 @@ int FindCommand(FILE* f, char* p, char* modrm) {
 
 				//now modrm testing
 				//printf("\t\tStarting to tezt reg field:\n");
-				fseek(f, text_counter + MODRM_FIELD_OFFSET, SEEK_SET);//check is modrm present
-				fread(&buf, 1, 1, f);
+				// fseek(f, text_counter + MODRM_FIELD_OFFSET, SEEK_SET);//check is modrm present
+				// fread(&buf, 1, 1, f);
+				offset = text_counter + MODRM_FIELD_OFFSET;
+				buf = opcodes[offset++];
 				if (buf == ' ') {//modrm isnt here
 					return text_counter;
 				}
@@ -91,7 +87,8 @@ int FindCommand(FILE* f, char* p, char* modrm) {
 				}
 				else {//11
 					if (buf == modrm[0]) {
-						fread(&buf, 1, 1, f);
+						// fread(&buf, 1, 1, f);
+						buf = opcodes[offset++];
 						if (buf != modrm[1]) {
 							opcode_counter = 0;
 							break;
@@ -103,8 +100,10 @@ int FindCommand(FILE* f, char* p, char* modrm) {
 					}
 				}
 
-				fseek(f, text_counter + MODRM_FIELD_OFFSET + 3, SEEK_SET);//+3 for reg/opcode field
-				fread(&buf, 1, 1, f);
+				// fseek(f, text_counter + MODRM_FIELD_OFFSET + 3, SEEK_SET);//+3 for reg/opcode field
+				// fread(&buf, 1, 1, f);
+				offset = text_counter + MODRM_FIELD_OFFSET + 3;
+				buf = opcodes[offset++];
 
 				if (buf != '0' && buf != '1') {
 					//printf("FindCommand:2\n");
@@ -116,13 +115,15 @@ int FindCommand(FILE* f, char* p, char* modrm) {
 					//printf("\tNOT FOUND -2\n");
 					break;
 				}
-				fread(&buf, 1, 1, f);
+				// fread(&buf, 1, 1, f);
+				buf = opcodes[offset++];
 				if (modrm[3] != buf) {
 					opcode_counter = 0;
 					//printf("\tNOT FOUND 3\n");
 					break;
 				}
-				fread(&buf, 1, 1, f);
+				// fread(&buf, 1, 1, f);
+				buf = opcodes[offset++];
 				if (modrm[4] != buf) {
 					opcode_counter = 0;
 					//printf("\tNOT FOUND 4\n");
@@ -139,15 +140,18 @@ int FindCommand(FILE* f, char* p, char* modrm) {
 			}
 
 			if (buf == 'f') {//pop s - push s processing
-				fseek(f, ftell(f) + 3, SEEK_SET);//0-push,1-pop
-				fread(&buf, 1, 1, f);
+				// fseek(f, ftell(f) + 3, SEEK_SET);//0-push,1-pop
+				// fread(&buf, 1, 1, f);
+				offset += 3;
+				buf = opcodes[offset++];
 				if (buf == '1') {//pop
 					if (((p[opcode_counter] - '0') == 0) && ((p[opcode_counter + 1] - '0') == 1)) {//01-cs
 						opcode_counter = 0;
 						break;
 					}
 				}
-				fseek(f, ftell(f) - 3, SEEK_SET);
+				// fseek(f, ftell(f) - 3, SEEK_SET);
+				offset -= 3;
 				opcode_counter++;
 			}
 
@@ -157,8 +161,10 @@ int FindCommand(FILE* f, char* p, char* modrm) {
 					opcode_counter = 0;
 					break;
 				}
-				fread(&buf, 1, 1, f);
-				fread(&buf, 1, 1, f);
+				// fread(&buf, 1, 1, f);
+				// fread(&buf, 1, 1, f);
+				buf = opcodes[offset++];
+				buf = opcodes[offset++];
 				opcode_counter += 2;
 			}
 
@@ -167,8 +173,10 @@ int FindCommand(FILE* f, char* p, char* modrm) {
 		}
 		text_counter += LINE_LEN;
 		while (1) {//comments
-			fseek(f, text_counter, SEEK_SET);
-			if (fread(&buf, 1, 1, f) == 0) {//file end
+			// fseek(f, text_counter, SEEK_SET);
+			offset = text_counter;
+			// if (fread(&buf, 1, 1, f) == 0) {//file end
+			if(offset >= opcode_len){
 				return -1;
 			}
 
@@ -334,26 +342,18 @@ void SCommandInit(SCommand*command){
 //====================================================================================================
 int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 	UByte temp_byte;
-	FILE* hFileOpcodes;
+	// FILE* hFileOpcodes;
 	int bytecounter = 0, temp_int, ext_len = 0, counter = 0, com_len;
 	uint8_t * temp_char, * temp_char1, * temp_char2, * temp_char3;
 	uint8_t buf, buf2;
+	int offset = 0;
 
-	//printf("Begin GetCommand:\n");
-	SCommandInit(cp);
-
-	if ((hFileOpcodes = fopen("res/opcodes.ttt", "rb")) == 0) {
-		printf("\tError: cant open \"opcodes.ttt\"\n");
-		return RET_ERROR;
-	}
-	// mp = (uint8_t*)malloc(MAX_COMMAND_LEN);//mem allocating
-	// com_len1 = fread(mp, 1, MAX_COMMAND_LEN, hFile);//reading data block, !file pointer+=MAX_COMMAND_LEN!
-
-	if (com_len1 == 0) {//file end
+	if (com_len1 == 0) {
 		return RET_FILE_END;
 	}
 
-	//printf("\"prefixes.ttt\" opened\n");
+	SCommandInit(cp);
+
 	/*------------------------------------------------------------prefix parsing------------------------------------------------------*/
 	if (ParsePrefixes(cp, mp, com_len1) == RET_ERROR) {
 		printf("\tError: invalid command\n");
@@ -381,7 +381,7 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 #ifdef _DEBUG
 		printf("\t\tPossible opcode:%s possible modrm:%s\n", cp->opcode.bytes, temp_char);
 #endif
-		if ((temp_int = FindCommand(hFileOpcodes, cp->opcode.bytes, temp_char)) != -1) {//command found
+		if ((temp_int = FindCommand(0, cp->opcode.bytes, temp_char)) != -1) {//command found
 			break;//we can exit, buf<4
 		}
 		buf++;
@@ -389,7 +389,7 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 
 	if (buf == 3) {//command not found
 		printf("\tError:command not found!\n");
-		fclose(hFileOpcodes);
+		// fclose(hFileOpcodes);
 		return RET_ERROR;
 	}
 	//now in temp_int command position 
@@ -400,10 +400,12 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 
 	/*------------------------------------------------------------ext parsing---------------------------------------------------------*/
 
-	fseek(hFileOpcodes, temp_int, SEEK_SET);//fp on command field
+	// fseek(hFileOpcodes, temp_int, SEEK_SET);//fp on command field
+	offset = temp_int;
 	ext_len = 0;
 	while (1) {
-		fread(&buf, 1, 1, hFileOpcodes);
+		//fread(&buf, 1, 1, hFileOpcodes);
+		buf = opcodes[offset++];
 		if (buf == ' ') {//cell end
 			break;
 		}
@@ -423,33 +425,42 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 		case 'r'://reg
 			cp->sf.reg = (cp->opcode.bytes[ext_len] - '0') * 4 + (cp->opcode.bytes[ext_len + 1] - '0') * 2 + (cp->opcode.bytes[ext_len + 2] - '0');
 			ext_len += 2;
-			fread(&buf, 1, 1, hFileOpcodes);
-			fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			buf = opcodes[offset+1];
+			offset += 2;
 			break;
 
 		case 't'://tttn
 			cp->sf.tttn = (cp->opcode.bytes[ext_len] - '0') * 8 + (cp->opcode.bytes[ext_len + 1] - '0') * 4 + (cp->opcode.bytes[ext_len + 2] - '0') * 2 + (cp->opcode.bytes[ext_len + 3] - '0');
 			ext_len += 3;
-			fread(&buf, 1, 1, hFileOpcodes);
-			fread(&buf, 1, 1, hFileOpcodes);
-			fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			buf = opcodes[offset+2];
+			offset += 3;
 			break;
 		case 'e'://eee special purpose registers (cr, dr)
 			cp->sf.eee = (cp->opcode.bytes[ext_len] - '0') * 4 + (cp->opcode.bytes[ext_len + 1] - '0') * 2 + (cp->opcode.bytes[ext_len + 2] - '0');
 			ext_len += 2;
-			fread(&buf, 1, 1, hFileOpcodes);
-			fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			buf = opcodes[offset+1];
+			offset += 2;
 			break;
 		case 'f'://ff-sreg2(2 bits) 
 			cp->sf.ff = (cp->opcode.bytes[ext_len] - '0') * 2 + (cp->opcode.bytes[ext_len + 1] - '0');
 			ext_len += 1;
-			fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			buf = opcodes[offset++];
 			break;
 		case 'u'://uuu-sreg3(3 bits)
 			cp->sf.uuu = (cp->opcode.bytes[ext_len] - '0') * 4 + (cp->opcode.bytes[ext_len + 1] - '0') * 2 + (cp->opcode.bytes[ext_len + 2] - '0');
 			ext_len += 2;
-			fread(&buf, 1, 1, hFileOpcodes);
-			fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			// fread(&buf, 1, 1, hFileOpcodes);
+			buf = opcodes[offset+1];
+			offset += 2;
 			break;
 			/*default:
 			printf("\tError:cant find ext. buf=%c\n",buf);
@@ -460,8 +471,11 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 	}
 	/*------------------------------------------------------------ext parsing---------------------------------------------------------*/
 	/*----------------------------------------------------------modrm parsing---------------------------------------------------------*/
-	fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET, SEEK_SET);//check modrm is present
-	fread(&buf, 1, 1, hFileOpcodes);
+	// fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET, SEEK_SET);//check modrm is present
+	// fread(&buf, 1, 1, hFileOpcodes);
+	offset = temp_int + MODRM_FIELD_OFFSET;
+	buf = opcodes[offset++];
+
 	if (buf != ' ') {//modrm is here
 		cp->modrm.modrm = mp[bytecounter];
 		cp->modrm.mod = (temp_char[0] - '0') * 2 + (temp_char[1] - '0');
@@ -476,11 +490,13 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 	/*----------------------------------------------------------modrm parsing---------------------------------------------------------*/
 
 	/*--------------------------------------------------------command parsing---------------------------------------------------------*/
-	fseek(hFileOpcodes, temp_int + DESCRIPTION_FIELD_OFFSET, SEEK_SET);
+	// fseek(hFileOpcodes, temp_int + DESCRIPTION_FIELD_OFFSET, SEEK_SET);
+	offset = temp_int + DESCRIPTION_FIELD_OFFSET;
 	//printf("\tfseek=%d temp_int+DESCRIPTION_FIELD_OFFSET=%d\n",ftell(hFileOpcodes),temp_int+DESCRIPTION_FIELD_OFFSET);
 	ext_len = 0;
 	while (1) {//readindg command
-		fread(&buf, 1, 1, hFileOpcodes);
+		// fread(&buf, 1, 1, hFileOpcodes);
+		buf = opcodes[offset++];
 		if (buf == ' ') {
 			break;
 		}
@@ -499,7 +515,8 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 	ext_len = 0;
 	while (1) {
 		cp->par = (char*)realloc(cp->par, ext_len + 2);
-		fread(&buf, 1, 1, hFileOpcodes);
+		// fread(&buf, 1, 1, hFileOpcodes);
+		buf = opcodes[offset++];
 		if (buf == ' ') {// no operands | file end
 			break;
 		}
@@ -536,12 +553,16 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 				//printf("\t\tpos in ret:%d temp_char:%s\n",Find(hFileRet,temp_char1),temp_char1);
 			}
 			else {//search in mod/opcode section
-				fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 3, SEEK_SET);//fp on mod/opcode section
-				fread(&buf, 1, 1, hFileOpcodes);
+				// fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 3, SEEK_SET);//fp on mod/opcode section
+				// fread(&buf, 1, 1, hFileOpcodes);
+				offset = temp_int + MODRM_FIELD_OFFSET + 3;
+				buf = opcodes[offset++];
 				if (buf == 'r') {
 					//check if reg1
-					fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 6, SEEK_SET);
-					fread(&buf, 1, 1, hFileOpcodes);
+					// fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 6, SEEK_SET);
+					// fread(&buf, 1, 1, hFileOpcodes);
+					offset = temp_int + MODRM_FIELD_OFFSET + 6;
+					buf = opcodes[offset++];
 					if (buf == '1' || buf == ' ') {//reg1 | reg
 						ext_len = cp->modrm.reg;
 					}
@@ -735,11 +756,15 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 
 			//------------------------------------reg2----------------------------------------------------------------------			
 		case 'p'://reg2
-			fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 3, SEEK_SET);//fp on reg/opcode section
-			fread(&buf, 1, 1, hFileOpcodes);
+			// fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 3, SEEK_SET);//fp on reg/opcode section
+			// fread(&buf, 1, 1, hFileOpcodes);
+			offset = temp_int + MODRM_FIELD_OFFSET + 3;
+			buf = opcodes[offset++];
 			if (buf == 'r') {//check if reg2
-				fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 6, SEEK_SET);
-				fread(&buf, 1, 1, hFileOpcodes);
+				// fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 6, SEEK_SET);
+				// fread(&buf, 1, 1, hFileOpcodes);
+				offset = temp_int + MODRM_FIELD_OFFSET + 6;
+				buf = opcodes[offset++];
 				if (buf == '2') {//reg2
 					ext_len = cp->modrm.reg;
 				}
@@ -940,8 +965,10 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 					ext_len = cp->sf.uuu;
 				}
 				else {
-					fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 3, SEEK_SET);//fp on mod/opcode section
-					fread(&buf, 1, 1, hFileOpcodes);
+					// fseek(hFileOpcodes, temp_int + MODRM_FIELD_OFFSET + 3, SEEK_SET);//fp on mod/opcode section
+					// fread(&buf, 1, 1, hFileOpcodes);
+					offset = temp_int + MODRM_FIELD_OFFSET + 3;
+					buf = opcodes[offset++];
 					if (buf == 's') {
 						ext_len = cp->modrm.reg;
 						//printf("\t\tDEBUG\n");
@@ -991,14 +1018,14 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 				break;
 
 			case 6://reserved1
-				fclose(hFileOpcodes);
+				// fclose(hFileOpcodes);
 				// free(mp);
 				return RET_ERROR;//error
 				break;
 
 			case 7://reserved2
 				return RET_ERROR;//error
-				fclose(hFileOpcodes);
+				// fclose(hFileOpcodes);
 				// free(mp);
 				break;
 			}
@@ -1044,8 +1071,10 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 				ext_len = cp->sf.eee;
 			}
 			else {
-				fseek(hFileOpcodes, MODRM_FIELD_OFFSET + 3, SEEK_SET);
-				fread(&buf, 1, 1, hFileOpcodes);
+				// fseek(hFileOpcodes, MODRM_FIELD_OFFSET + 3, SEEK_SET);
+				// fread(&buf, 1, 1, hFileOpcodes);
+				offset = MODRM_FIELD_OFFSET + 3;
+				buf = opcodes[offset++];
 				if (buf == 'e') {//eee
 					ext_len = cp->modrm.reg;
 				}
@@ -1120,8 +1149,10 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 				ext_len = cp->sf.eee;
 			}
 			else {
-				fseek(hFileOpcodes, MODRM_FIELD_OFFSET + 3, SEEK_SET);
-				fread(&buf, 1, 1, hFileOpcodes);
+				// fseek(hFileOpcodes, MODRM_FIELD_OFFSET + 3, SEEK_SET);
+				// fread(&buf, 1, 1, hFileOpcodes);
+				offset = MODRM_FIELD_OFFSET + 3;
+				buf = opcodes[offset++];
 				if (buf == 'e') {//eee
 					ext_len = cp->modrm.reg;
 				}
@@ -2184,7 +2215,7 @@ int GetCommand(SCommand* cp, uint8_t mp[], int com_len1) {
 	//---operands parsing---
 
 	// fseek(hFile, ftell(hFile) - com_len1 + bytecounter, SEEK_SET);
-	fclose(hFileOpcodes);
+	// fclose(hFileOpcodes);
 	return RET_SUCCESS;
 }
 
@@ -2253,16 +2284,29 @@ int disasm(u_int8_t cmd[], int cmd_len){
 }
 
 int loadOpCodes(){
+	FILE* hFileOpcodes;
+	if ((hFileOpcodes = fopen("res/opcodes.ttt", "rb")) == 0) {
+		printf("\tError: cant open \"opcodes.ttt\"\n");
+		exit(0);
+		return RET_ERROR;
+	}
+	fseek(hFileOpcodes, 0, SEEK_END);
+	int len = ftell(hFileOpcodes) + 1;
+	fseek(hFileOpcodes, 0, SEEK_SET);
+
+	opcodes = malloc(len);
+	opcodes[len] = 0;
+	opcode_len = fread(opcodes, 1, len, hFileOpcodes);
+	fclose(hFileOpcodes);
 	return 0;
 }
-//====================================================================================================
-int main() {
+
+int parseExeFile(){
 	FILE* hFile = NULL;
 	int i = 1;
 	char* path = NULL;
 //	IMAGE_SECTION_HEADER sSection;
 
-	loadOpCodes();
 	// printf("Enter path: ");//opening file
 	// path = CharEnter();
 	// printf("\tTarget PE: %s\n", path);
@@ -2280,30 +2324,35 @@ int main() {
 	// fseek(hFile, sSection.PointerToRawData, SEEK_SET);
 
 	// while ((GetCommand(&command, hFile) == RET_SUCCESS) && (ftell(hFile) < (sSection.PointerToRawData + sSection.SizeOfRawData))) {
-		uint8_t push_1[]	= {0x6a, 0x01};
-		uint8_t int_3[]		= {0xcc};
-		uint8_t int_80[]	= {0xcd, 0x80};
-		uint8_t ret[]		= {0xc3};
-		uint8_t mov_rcx_0[]	= {0x48, 0x8b, 0x0d, 0x00, 0x00, 0x00, 0x00};	//x64: mov rcx, [rip+imm32]
-		uint8_t lea_rcx_0[]	= {0x48, 0x8d, 0x0d, 0x00, 0x00, 0x00, 0x00};	//x64: lea rcx, [rip+imm32]
-		uint8_t mov_edx_ecx[] = {0x89, 0xca};
-		uint8_t xor_eax_eax[]	= {0x31, 0xc0};
-		disasm(push_1, sizeof(push_1));
-		disasm(int_3, sizeof(int_3));
-		disasm(int_80, sizeof(int_80));
-		disasm(ret, sizeof(ret));
-		disasm(mov_edx_ecx, sizeof(mov_edx_ecx));
-		disasm(xor_eax_eax, sizeof(xor_eax_eax));
-		
-		// disasm(mov_rcx_0, sizeof(mov_rcx_0));
 
 	// }
 
 	if(hFile)
 		fclose(hFile);
 	if(path)
-		free(path);
-	// getchar();
+		free(path);	
+	return 0;
+}
+//====================================================================================================
+int main() {
+	loadOpCodes();
+
+	uint8_t push_1[]		= {0x6a, 0x01};
+	uint8_t int_3[]			= {0xcc};
+	uint8_t int_80[]		= {0xcd, 0x80};
+	uint8_t ret[]			= {0xc3};
+	uint8_t mov_rcx_0[]		= {0x48, 0x8b, 0x0d, 0x00, 0x00, 0x00, 0x00};	//x64: mov rcx, [rip+imm32]
+	uint8_t lea_rcx_0[]		= {0x48, 0x8d, 0x0d, 0x00, 0x00, 0x00, 0x00};	//x64: lea rcx, [rip+imm32]
+	uint8_t mov_edx_ecx[] 	= {0x89, 0xca};
+	uint8_t xor_eax_eax[]	= {0x31, 0xc0};
+	disasm(push_1, sizeof(push_1));
+	disasm(int_3, sizeof(int_3));
+	disasm(int_80, sizeof(int_80));
+	disasm(ret, sizeof(ret));
+	disasm(mov_edx_ecx, sizeof(mov_edx_ecx));
+	disasm(xor_eax_eax, sizeof(xor_eax_eax));
+		
+	// disasm(mov_rcx_0, sizeof(mov_rcx_0));
 
 	return 0;
 }
